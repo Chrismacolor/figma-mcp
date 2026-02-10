@@ -1,45 +1,47 @@
 # Figma MCP Server
 
-An MCP server that lets Claude create editable designs in Figma through natural language prompts.
+MCP server that lets Claude create and edit Figma designs through natural language — bridges Claude (MCP/stdio) to a Figma plugin (HTTP polling) via a single Python process.
 
 ## Architecture
 
 ```
 Claude Desktop ──[MCP/stdio]──► Python Server ◄──[HTTP/localhost:8300]──► Figma Plugin
-                                (single process)
+                                (single process)                          (polls every 1.5s)
+                                ├─ MCP tool handler
+                                ├─ FastAPI HTTP routes
+                                └─ In-memory job queue
 ```
-
-The Python server runs both the MCP protocol (over stdio for Claude) and an HTTP bridge (port 8300 for the Figma plugin) in a single process. The Figma plugin polls the HTTP bridge every 1.5 seconds for pending jobs.
 
 ## Setup
 
-### Python Server
+### 1. Python Server
 
 ```bash
-# Install dependencies
+python3 -m venv .venv
+source .venv/bin/activate
 pip install -e .
-
-# Run the server
-figma-mcp
 ```
 
-The server prints an auth token to stderr on startup — copy it for the plugin.
+### 2. Claude Desktop Configuration
 
-### Claude Desktop Configuration
-
-Add to your Claude Desktop MCP config (`~/Library/Application Support/Claude/claude_desktop_config.json`):
+Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
 
 ```json
 {
   "mcpServers": {
     "figma": {
-      "command": "figma-mcp"
+      "command": "/path/to/figma-mcp/.venv/bin/figma-mcp",
+      "env": {
+        "FIGMA_MCP_TOKEN": "your-stable-token-here"
+      }
     }
   }
 }
 ```
 
-### Figma Plugin
+Setting `FIGMA_MCP_TOKEN` gives you a stable auth token across restarts. If omitted, a random token is generated each time and printed to stderr.
+
+### 3. Figma Plugin
 
 ```bash
 cd plugin
@@ -47,24 +49,66 @@ npm install
 npm run build
 ```
 
-In Figma: Plugins → Development → Import plugin from manifest → select `plugin/manifest.json`.
+In Figma: **Plugins → Development → Import plugin from manifest** → select `plugin/manifest.json`.
 
-Open the plugin, paste the auth token from the server output, and click Connect.
+Open the plugin, paste your auth token, and click **Connect**. Keep the plugin panel open while using Claude.
 
 ## MCP Tools
 
-- **enqueue_ops** — Send a batch of design operations (CREATE_FRAME, CREATE_RECTANGLE, CREATE_ELLIPSE, CREATE_TEXT)
-- **get_job_status** — Check if a job has been executed by the plugin
-- **read_node_tree** — Read the current Figma page structure
-- **list_jobs** — List all jobs and their statuses
+| Tool | Description |
+|------|-------------|
+| `enqueue_ops` | Send a batch of design operations to Figma |
+| `get_job_status` | Check if a job completed, failed, or is still pending |
+| `read_node_tree` | Read the current Figma page structure (waits up to 30s for plugin) |
+| `list_jobs` | List all jobs and their statuses |
 
 ## Ops DSL
 
-Each op requires a unique `tempId`. Use `parentTempId` to nest elements inside a previously declared node.
+Each op requires a unique `tempId` and an `op` type: `CREATE_FRAME`, `CREATE_RECTANGLE`, `CREATE_ELLIPSE`, or `CREATE_TEXT`.
+
+### Parent Referencing
+
+- `parentTempId` — reference a node declared earlier in the **same batch**
+- `parentNodeId` — reference a real Figma node ID (e.g. `"16:2"`) from a **previous batch's** result, enabling cross-batch nesting
+
+### Example
 
 ```json
 [
-  {"op": "CREATE_FRAME", "tempId": "hero", "name": "Hero Section", "w": 1440, "h": 900, "fills": [{"r": 1, "g": 1, "b": 1}]},
-  {"op": "CREATE_TEXT", "tempId": "heading", "parentTempId": "hero", "text": "Welcome", "fontSize": 64, "fontFamily": "Inter", "fontWeight": "Bold"}
+  {"op": "CREATE_FRAME", "tempId": "hero", "name": "Hero", "w": 1440, "h": 900,
+   "layoutMode": "VERTICAL", "primaryAxisAlignItems": "CENTER",
+   "fills": [{"r": 0.1, "g": 0.1, "b": 0.15}]},
+
+  {"op": "CREATE_TEXT", "tempId": "h1", "parentTempId": "hero",
+   "text": "Welcome", "fontSize": 64, "fontWeight": 700,
+   "fills": [{"r": 1, "g": 1, "b": 1}]}
 ]
 ```
+
+### Font Weights
+
+Accepts both string and numeric values:
+
+| Numeric | String |
+|---------|--------|
+| 100 | Thin |
+| 200 | Extra Light |
+| 300 | Light |
+| 400 | Regular |
+| 500 | Medium |
+| 600 | Semi Bold |
+| 700 | Bold |
+| 800 | Extra Bold |
+| 900 | Black |
+
+### Op Field Reference
+
+**All ops:** `tempId`, `parentTempId`, `parentNodeId`, `name`, `x`, `y`, `fills [{r,g,b,a}]`
+
+**CREATE_FRAME:** `w`, `h`, `cornerRadius`, `layoutMode`, `itemSpacing`, `paddingLeft/Right/Top/Bottom`, `primaryAxisAlignItems`, `counterAxisAlignItems`, `clipsContent`
+
+**CREATE_RECTANGLE:** `w`, `h`, `cornerRadius`, `opacity`
+
+**CREATE_ELLIPSE:** `w`, `h`, `opacity`
+
+**CREATE_TEXT:** `text`, `fontSize`, `fontFamily`, `fontWeight`, `textAlignHorizontal`, `textAutoResize`, `w`, `h`, `lineHeight`, `letterSpacing`, `opacity`
