@@ -1,0 +1,17 @@
+[project]
+name = "figma-mcp"
+version = "0.1.0"
+description = "MCP server bridging Claude to Figma via plugin HTTP polling"
+requires-python = ">=3.11"
+dependencies = [
+    "fastmcp>=2.0,<3",
+    "fastapi>=0.115",
+    "uvicorn>=0.34",
+    "pydantic>=2.0",
+]
+
+[tool.setuptools.packages.find]
+include = ["server*"]
+
+[project.scripts]
+figma-mcp = "server.main:main"

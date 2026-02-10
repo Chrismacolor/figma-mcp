@@ -1,0 +1,14 @@
+{
+  "name": "Figma MCP Bridge",
+  "id": "figma-mcp-bridge-dev",
+  "api": "1.0.0",
+  "main": "dist/code.js",
+  "ui": "dist/ui.html",
+  "editorType": ["figma", "dev"],
+  "capabilities": ["inspect"],
+  "networkAccess": {
+    "allowedDomains": ["http://localhost:8300"],
+    "reasoning": "Communicates with the local MCP bridge server to receive design operations from Claude.",
+    "devAllowedDomains": ["http://localhost:8300"]
+  }
+}

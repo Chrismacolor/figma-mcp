@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: Inter, system-ui, sans-serif; font-size: 12px; padding: 12px; background: #2c2c2c; color: #e0e0e0; }
+    .field { margin-bottom: 8px; }
+    .field label { display: block; margin-bottom: 2px; color: #aaa; font-size: 11px; }
+    .field input { width: 100%; padding: 6px 8px; border: 1px solid #555; border-radius: 4px; font-size: 12px; background: #3a3a3a; color: #e0e0e0; }
+    .field input:focus { outline: none; border-color: #0d99ff; }
+    button { padding: 6px 14px; border: none; border-radius: 4px; font-size: 12px; cursor: pointer; }
+    #connectBtn { background: #0d99ff; color: white; width: 100%; }
+    #connectBtn:hover { background: #0b87e0; }
+    #connectBtn.connected { background: #e74c3c; }
+    #connectBtn.connected:hover { background: #c0392b; }
+    .status { display: flex; align-items: center; gap: 6px; margin: 10px 0; font-size: 11px; }
+    .dot { width: 8px; height: 8px; border-radius: 50%; }
+    .dot.off { background: #666; }
+    .dot.on { background: #2ecc71; }
+    .dot.error { background: #e74c3c; }
+    #log { margin-top: 8px; padding: 6px; background: #1e1e1e; border-radius: 4px; max-height: 200px; overflow-y: auto; font-family: monospace; font-size: 10px; line-height: 1.5; color: #bbb; }
+    .log-entry { border-bottom: 1px solid #333; padding: 2px 0; }
+  </style>
+</head>
+<body>
+  <div class="field">
+    <label>Server URL</label>
+    <input id="serverUrl" value="http://localhost:8300" />
+  </div>
+  <div class="field">
+    <label>Auth Token</label>
+    <input id="authToken" placeholder="Paste token from server output" />
+  </div>
+  <button id="connectBtn">Connect</button>
+  <div class="status">
+    <span class="dot off" id="statusDot"></span>
+    <span id="statusText">Disconnected</span>
+  </div>
+  <div id="log"></div>
+  <script>"use strict";
+(() => {
+  var __getOwnPropNames = Object.getOwnPropertyNames;
+  var __commonJS = (cb, mod) => function __require() {
+    return mod || (0, cb[__getOwnPropNames(cb)[0]])((mod = { exports: {} }).exports, mod), mod.exports;
+  };
+  var __async = (__this, __arguments, generator) => {
+    return new Promise((resolve, reject) => {
+      var fulfilled = (value) => {
+        try {
+          step(generator.next(value));
+        } catch (e) {
+          reject(e);
+        }
+      };
+      var rejected = (value) => {
+        try {
+          step(generator.throw(value));
+        } catch (e) {
+          reject(e);
+        }
+      };
+      var step = (x) => x.done ? resolve(x.value) : Promise.resolve(x.value).then(fulfilled, rejected);
+      step((generator = generator.apply(__this, __arguments)).next());
+    });
+  };
+
+  // src/ui.ts
+  var require_ui = __commonJS({
+    "src/ui.ts"(exports) {
+      var serverUrlInput = document.getElementById("serverUrl");
+      var authTokenInput = document.getElementById("authToken");
+      var connectBtn = document.getElementById("connectBtn");
+      var statusDot = document.getElementById("statusDot");
+      var statusText = document.getElementById("statusText");
+      var logDiv = document.getElementById("log");
+      var connected = false;
+      var pollTimer = null;
+      function log(msg) {
+        const entry = document.createElement("div");
+        entry.className = "log-entry";
+        const time = (/* @__PURE__ */ new Date()).toLocaleTimeString();
+        entry.textContent = `[${time}] ${msg}`;
+        logDiv.appendChild(entry);
+        logDiv.scrollTop = logDiv.scrollHeight;
+      }
+      function setStatus(state, text) {
+        statusDot.className = `dot ${state}`;
+        statusText.textContent = text;
+      }
+      function getHeaders() {
+        return {
+          Authorization: `Bearer ${authTokenInput.value.trim()}`,
+          "Content-Type": "application/json"
+        };
+      }
+      function baseUrl() {
+        return serverUrlInput.value.trim().replace(/\/$/, "");
+      }
+      function checkHealth() {
+        return __async(this, null, function* () {
+          try {
+            const resp = yield fetch(`${baseUrl()}/health`);
+            return resp.ok;
+          } catch (e) {
+            return false;
+          }
+        });
+      }
+      function pollJobs() {
+        return __async(this, null, function* () {
+          try {
+            const resp = yield fetch(`${baseUrl()}/api/jobs/next`, {
+              headers: getHeaders()
+            });
+            if (resp.status === 401) {
+              log("Auth failed (401) \u2014 check token");
+              setStatus("error", "Auth failed (401)");
+              disconnect();
+              return;
+            }
+            if (resp.status === 204) return;
+            if (!resp.ok) return;
+            const job = yield resp.json();
+            log(`Job received: ${job.id} (${job.ops.length} ops)`);
+            parent.postMessage(
+              { pluginMessage: { type: "execute-ops", jobId: job.id, ops: job.ops } },
+              "*"
+            );
+          } catch (err) {
+            log(`Poll error: ${err.message}`);
+          }
+        });
+      }
+      function pollReadRequests() {
+        return __async(this, null, function* () {
+          try {
+            const resp = yield fetch(`${baseUrl()}/api/read-request`, {
+              headers: getHeaders()
+            });
+            if (resp.status === 204 || !resp.ok) return;
+            const req = yield resp.json();
+            log(`Read request: ${req.id} (depth=${req.depth})`);
+            parent.postMessage(
+              {
+                pluginMessage: {
+                  type: "read-node-tree",
+                  requestId: req.id,
+                  depth: req.depth
+                }
+              },
+              "*"
+            );
+          } catch (err) {
+            log(`Read poll error: ${err.message}`);
+          }
+        });
+      }
+      function poll() {
+        return __async(this, null, function* () {
+          yield Promise.all([pollJobs(), pollReadRequests()]);
+        });
+      }
+      function connect() {
+        if (!authTokenInput.value.trim()) {
+          log("Enter auth token first");
+          return;
+        }
+        checkHealth().then((ok) => {
+          if (!ok) {
+            log("Cannot reach server \u2014 is it running?");
+            setStatus("error", "Server unreachable");
+            return;
+          }
+          connected = true;
+          connectBtn.textContent = "Disconnect";
+          connectBtn.className = "connected";
+          setStatus("on", "Connected \u2014 polling");
+          log("Connected to server");
+          poll();
+          pollTimer = setInterval(poll, 1500);
+        });
+      }
+      function disconnect() {
+        connected = false;
+        if (pollTimer) {
+          clearInterval(pollTimer);
+          pollTimer = null;
+        }
+        connectBtn.textContent = "Connect";
+        connectBtn.className = "";
+        setStatus("off", "Disconnected");
+        log("Disconnected");
+      }
+      connectBtn.addEventListener("click", () => {
+        if (connected) {
+          disconnect();
+        } else {
+          connect();
+        }
+      });
+      window.onmessage = (event) => __async(exports, null, function* () {
+        var _a;
+        const msg = (_a = event.data) == null ? void 0 : _a.pluginMessage;
+        if (!msg) return;
+        if (msg.type === "job-complete") {
+          log(`Job complete: ${msg.jobId}`);
+          try {
+            yield fetch(`${baseUrl()}/api/jobs/${msg.jobId}/complete`, {
+              method: "POST",
+              headers: getHeaders(),
+              body: JSON.stringify({ result: msg.result })
+            });
+          } catch (err) {
+            log(`Failed to report completion: ${err.message}`);
+          }
+        } else if (msg.type === "job-error") {
+          log(`Job error: ${msg.error}`);
+          try {
+            yield fetch(`${baseUrl()}/api/jobs/${msg.jobId}/error`, {
+              method: "POST",
+              headers: getHeaders(),
+              body: JSON.stringify({ error: msg.error })
+            });
+          } catch (err) {
+            log(`Failed to report error: ${err.message}`);
+          }
+        } else if (msg.type === "read-response") {
+          log(`Read response for ${msg.requestId}`);
+          try {
+            yield fetch(
+              `${baseUrl()}/api/read-request/${msg.requestId}/response`,
+              {
+                method: "POST",
+                headers: getHeaders(),
+                body: JSON.stringify({ data: msg.data })
+              }
+            );
+          } catch (err) {
+            log(`Failed to send read response: ${err.message}`);
+          }
+        }
+      });
+    }
+  });
+  require_ui();
+})();
+</script>
+</body>
+</html>

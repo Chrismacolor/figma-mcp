@@ -1,0 +1,15 @@
+README.md
+pyproject.toml
+figma_mcp.egg-info/PKG-INFO
+figma_mcp.egg-info/SOURCES.txt
+figma_mcp.egg-info/dependency_links.txt
+figma_mcp.egg-info/entry_points.txt
+figma_mcp.egg-info/requires.txt
+figma_mcp.egg-info/top_level.txt
+server/__init__.py
+server/auth.py
+server/http_routes.py
+server/job_queue.py
+server/main.py
+server/mcp_tools.py
+server/ops_schema.py
