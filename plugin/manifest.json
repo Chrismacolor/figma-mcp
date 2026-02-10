@@ -7,8 +7,8 @@
   "editorType": ["figma", "dev"],
   "capabilities": ["inspect"],
   "networkAccess": {
-    "allowedDomains": ["http://localhost:8300"],
+    "allowedDomains": ["http://localhost:8400"],
     "reasoning": "Communicates with the local MCP bridge server to receive design operations from Claude.",
-    "devAllowedDomains": ["http://localhost:8300"]
+    "devAllowedDomains": ["http://localhost:8400"]
   }
 }

@@ -53,7 +53,7 @@ function inlineHtml() {
 <body>
   <div class="field">
     <label>Server URL</label>
-    <input id="serverUrl" value="http://localhost:8300" />
+    <input id="serverUrl" value="http://localhost:8400" />
   </div>
   <div class="field">
     <label>Auth Token</label>

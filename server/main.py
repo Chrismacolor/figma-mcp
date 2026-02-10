@@ -1,4 +1,5 @@
 import asyncio
+import os
 import sys
 
 import uvicorn
@@ -11,7 +12,7 @@ from .http_routes import init_routes
 from .job_queue import JobQueue
 from .mcp_tools import register_tools
 
-HTTP_PORT = 8300
+HTTP_PORT = int(os.environ.get("FIGMA_MCP_PORT", "8400"))
 
 
 def create_app() -> tuple[FastMCP, FastAPI]:
