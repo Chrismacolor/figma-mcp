@@ -1,2 +1,0 @@
-[console_scripts]
-figma-mcp = server.main:main

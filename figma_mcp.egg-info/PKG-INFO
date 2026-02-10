@@ -1,9 +1,0 @@
-Metadata-Version: 2.4
-Name: figma-mcp
-Version: 0.1.0
-Summary: MCP server bridging Claude to Figma via plugin HTTP polling
-Requires-Python: >=3.11
-Requires-Dist: fastmcp<3,>=2.0
-Requires-Dist: fastapi>=0.115
-Requires-Dist: uvicorn>=0.34
-Requires-Dist: pydantic>=2.0
