@@ -53,6 +53,8 @@ In Figma: **Plugins → Development → Import plugin from manifest** → select
 
 Open the plugin, paste your auth token, and click **Connect**. Keep the plugin panel open while using Claude.
 
+<img width="1432" height="959" alt="Screenshot 2026-02-10 at 8 44 20 AM" src="https://github.com/user-attachments/assets/4c976e47-89eb-40b1-bcde-e5eb338e7e80" />
+
 ## MCP Tools
 
 | Tool | Description |
