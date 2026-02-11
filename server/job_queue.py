@@ -20,11 +20,11 @@ class Job:
         self.created_at = time.time()
         self.result: dict[str, Any] | None = None
         self.error: str | None = None
+        self.done_event = asyncio.Event()
 
     def to_dict(self) -> dict:
         return {
             "id": self.id,
-            "ops": self.ops,
             "status": self.status.value,
             "createdAt": self.created_at,
             "result": self.result,
@@ -53,6 +53,14 @@ class JobQueue:
     def __init__(self) -> None:
         self._jobs: dict[str, Job] = {}
         self._pending_read: ReadRequest | None = None
+        self.last_plugin_poll: float = 0.0
+
+    def plugin_connected(self) -> bool:
+        """True if plugin polled within the last 10 seconds."""
+        return (time.time() - self.last_plugin_poll) < 10.0
+
+    def record_poll(self) -> None:
+        self.last_plugin_poll = time.time()
 
     def create_job(self, ops: list[dict]) -> Job:
         job = Job(ops)
@@ -78,6 +86,7 @@ class JobQueue:
             return False
         job.status = JobStatus.COMPLETED
         job.result = result
+        job.done_event.set()
         return True
 
     def fail_job(self, job_id: str, error: str) -> bool:
@@ -86,6 +95,7 @@ class JobQueue:
             return False
         job.status = JobStatus.FAILED
         job.error = error
+        job.done_event.set()
         return True
 
     def create_read_request(self, depth: int = 2) -> ReadRequest:

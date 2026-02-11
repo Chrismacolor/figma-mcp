@@ -5,7 +5,7 @@ MCP server that lets Claude create and edit Figma designs through natural langua
 ## Architecture
 
 ```
-Claude Desktop ──[MCP/stdio]──► Python Server ◄──[HTTP/localhost:8300]──► Figma Plugin
+Claude Desktop ──[MCP/stdio]──► Python Server ◄──[HTTP/localhost:8400]──► Figma Plugin
                                 (single process)                          (polls every 1.5s)
                                 ├─ MCP tool handler
                                 ├─ FastAPI HTTP routes
@@ -53,38 +53,69 @@ In Figma: **Plugins → Development → Import plugin from manifest** → select
 
 Open the plugin, paste your auth token, and click **Connect**. Keep the plugin panel open while using Claude.
 
-![Uploading Screenshot 2026-02-10 at 8.44.20 AM.png…]()
-
-
 ## MCP Tools
 
 | Tool | Description |
 |------|-------------|
 | `enqueue_ops` | Send a batch of design operations to Figma |
-| `get_job_status` | Check if a job completed, failed, or is still pending |
-| `read_node_tree` | Read the current Figma page structure (waits up to 30s for plugin) |
+| `get_job_status` | Wait for a job to complete (default 15s timeout) and return results |
+| `read_node_tree` | Read the current Figma page structure with rich property data |
 | `list_jobs` | List all jobs and their statuses |
+
+All tools include plugin connection awareness — they warn if the Figma plugin appears disconnected.
 
 ## Ops DSL
 
-Each op requires a unique `tempId` and an `op` type: `CREATE_FRAME`, `CREATE_RECTANGLE`, `CREATE_ELLIPSE`, or `CREATE_TEXT`.
+Each op requires a unique `tempId` and an `op` type.
+
+### Op Types
+
+| Op | Description |
+|----|-------------|
+| `CREATE_FRAME` | Create a frame (supports auto-layout, shadows) |
+| `CREATE_RECTANGLE` | Create a rectangle |
+| `CREATE_ELLIPSE` | Create an ellipse |
+| `CREATE_TEXT` | Create a text node |
+| `UPDATE_NODE` | Update properties of an existing node by `nodeId` |
+| `DELETE_NODE` | Remove an existing node by `nodeId` |
 
 ### Parent Referencing
 
 - `parentTempId` — reference a node declared earlier in the **same batch**
 - `parentNodeId` — reference a real Figma node ID (e.g. `"16:2"`) from a **previous batch's** result, enabling cross-batch nesting
 
-### Example
+### Examples
 
+**Create nodes:**
 ```json
 [
-  {"op": "CREATE_FRAME", "tempId": "hero", "name": "Hero", "w": 1440, "h": 900,
+  {"op": "CREATE_FRAME", "tempId": "card", "name": "Card", "w": 360, "h": 200,
    "layoutMode": "VERTICAL", "primaryAxisAlignItems": "CENTER",
-   "fills": [{"r": 0.1, "g": 0.1, "b": 0.15}]},
+   "fills": [{"r": 1, "g": 1, "b": 1}],
+   "stroke": {"r": 0.9, "g": 0.9, "b": 0.9, "weight": 1},
+   "dropShadow": {"color": {"r": 0, "g": 0, "b": 0, "a": 0.1}, "offset": {"x": 0, "y": 2}, "radius": 8}},
 
-  {"op": "CREATE_TEXT", "tempId": "h1", "parentTempId": "hero",
-   "text": "Welcome", "fontSize": 64, "fontWeight": 700,
-   "fills": [{"r": 1, "g": 1, "b": 1}]}
+  {"op": "CREATE_TEXT", "tempId": "h1", "parentTempId": "card",
+   "text": "Hello World", "fontSize": 24, "fontWeight": 700,
+   "fills": [{"r": 0.1, "g": 0.1, "b": 0.1}]}
+]
+```
+
+**Update existing nodes** (using nodeId from previous job's tempIdMap):
+```json
+[
+  {"op": "UPDATE_NODE", "tempId": "u1", "nodeId": "17:65",
+   "fills": [{"r": 1, "g": 0, "b": 0}], "opacity": 0.8},
+
+  {"op": "UPDATE_NODE", "tempId": "u2", "nodeId": "17:66",
+   "text": "Updated heading", "fontSize": 32, "fontWeight": 700}
+]
+```
+
+**Delete nodes:**
+```json
+[
+  {"op": "DELETE_NODE", "tempId": "d1", "nodeId": "17:65"}
 ]
 ```
 
@@ -106,12 +137,27 @@ Accepts both string and numeric values:
 
 ### Op Field Reference
 
-**All ops:** `tempId`, `parentTempId`, `parentNodeId`, `name`, `x`, `y`, `fills [{r,g,b,a}]`
+**All create ops:** `tempId`, `parentTempId`, `parentNodeId`, `name`, `x`, `y`, `fills [{r,g,b,a}]`, `stroke {r,g,b,a,weight,align}`, `opacity`
 
-**CREATE_FRAME:** `w`, `h`, `cornerRadius`, `layoutMode`, `itemSpacing`, `paddingLeft/Right/Top/Bottom`, `primaryAxisAlignItems`, `counterAxisAlignItems`, `clipsContent`
+**CREATE_FRAME:** `w`, `h`, `cornerRadius`, `layoutMode`, `itemSpacing`, `paddingLeft/Right/Top/Bottom`, `primaryAxisAlignItems`, `counterAxisAlignItems`, `clipsContent`, `dropShadow {color{r,g,b,a}, offset{x,y}, radius}`
 
-**CREATE_RECTANGLE:** `w`, `h`, `cornerRadius`, `opacity`
+**CREATE_RECTANGLE:** `w`, `h`, `cornerRadius`
 
-**CREATE_ELLIPSE:** `w`, `h`, `opacity`
+**CREATE_ELLIPSE:** `w`, `h`
 
-**CREATE_TEXT:** `text`, `fontSize`, `fontFamily`, `fontWeight`, `textAlignHorizontal`, `textAutoResize`, `w`, `h`, `lineHeight`, `letterSpacing`, `opacity`
+**CREATE_TEXT:** `text`, `fontSize`, `fontFamily`, `fontWeight`, `textAlignHorizontal`, `textAutoResize`, `w`, `h`, `lineHeight`, `letterSpacing`
+
+**UPDATE_NODE:** `nodeId` (required), plus any property to change: `name`, `x`, `y`, `w`, `h`, `fills`, `stroke`, `opacity`, `cornerRadius`, `text`, `fontSize`, `fontFamily`, `fontWeight`, `visible`
+
+**DELETE_NODE:** `nodeId` (required)
+
+### read_node_tree Response
+
+The tree now includes rich property data for each node:
+- `id`, `name`, `type`, `x`, `y`, `width`, `height`
+- `fill` — first solid fill color `{r, g, b, a}`
+- `opacity` — if not 1
+- `cornerRadius` — if > 0
+- `text`, `fontSize`, `fontFamily`, `fontWeight` — for text nodes
+- `layoutMode`, `itemSpacing` — for auto-layout frames
+- `visible` — if hidden

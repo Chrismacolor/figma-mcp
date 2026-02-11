@@ -30,6 +30,7 @@ class ReadResponseBody(BaseModel):
 @router.get("/jobs/next")
 async def get_next_job():
     assert _queue is not None
+    _queue.record_poll()
     job = _queue.next_pending()
     if job is None:
         return Response(status_code=204)
@@ -55,6 +56,7 @@ async def error_job(job_id: str, body: ErrorBody):
 @router.get("/read-request")
 async def get_read_request():
     assert _queue is not None
+    _queue.record_poll()
     req = _queue.get_pending_read()
     if req is None:
         return Response(status_code=204)
