@@ -34,6 +34,13 @@ class Stroke(BaseModel):
     weight: float = Field(default=1, ge=0, le=100)
     align: Literal["INSIDE", "OUTSIDE", "CENTER"] = "INSIDE"
 
+    @field_validator("align", mode="before")
+    @classmethod
+    def normalize_align(cls, v: str) -> str:
+        if isinstance(v, str):
+            return v.upper()
+        return v
+
 
 class ShadowColor(BaseModel):
     r: float = Field(ge=0, le=1)
@@ -220,9 +227,33 @@ class OpsBatch(BaseModel):
         return self
 
 
+_OP_TYPE_MAP: dict[str, type] = {
+    "CREATE_FRAME": CreateFrameOp,
+    "CREATE_RECTANGLE": CreateRectangleOp,
+    "CREATE_ELLIPSE": CreateEllipseOp,
+    "CREATE_TEXT": CreateTextOp,
+    "UPDATE_NODE": UpdateNodeOp,
+    "DELETE_NODE": DeleteNodeOp,
+}
+
+
 def validate_ops(raw_ops: list[dict]) -> OpsBatch:
-    """Validate raw op dicts. Raises ValueError/ValidationError on failure."""
-    return OpsBatch(ops=raw_ops)
+    """Validate raw op dicts with clear per-op errors instead of Pydantic union noise."""
+    parsed = []
+    for i, raw in enumerate(raw_ops):
+        op_type = raw.get("op")
+        if not op_type or op_type not in _OP_TYPE_MAP:
+            valid = ", ".join(_OP_TYPE_MAP)
+            raise ValueError(f"Op {i}: invalid op type '{op_type}'. Must be one of: {valid}")
+        cls = _OP_TYPE_MAP[op_type]
+        try:
+            parsed.append(cls(**raw))
+        except Exception as e:
+            raise ValueError(f"Op {i} ({op_type}, tempId={raw.get('tempId', '?')}): {e}") from None
+
+    batch = OpsBatch.model_construct(ops=parsed)
+    batch.validate_ops()
+    return batch
 
 
 def serialize_ops(batch: OpsBatch) -> list[dict]:

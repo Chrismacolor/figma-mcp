@@ -89,6 +89,8 @@ def register_tools(mcp, queue: JobQueue) -> None:
             result += " WARNING: Plugin not connected."
         return result
 
+    MAX_TREE_CHARS = 50000
+
     @mcp.tool()
     async def read_node_tree(depth: int = 3) -> str:
         """Read the current Figma page's node tree.
@@ -97,6 +99,7 @@ def register_tools(mcp, queue: JobQueue) -> None:
         opacity, cornerRadius, text content, fontSize, fontWeight, and children
         up to the specified depth (default 3).
 
+        Response is capped at ~50K chars. Use lower depth for large pages.
         Waits up to 30 seconds for the plugin to respond.
         """
         if not queue.plugin_connected():
@@ -109,4 +112,7 @@ def register_tools(mcp, queue: JobQueue) -> None:
         except asyncio.TimeoutError:
             return "Timeout: plugin did not respond within 30 seconds. Is the Figma plugin connected?"
 
-        return str(req.response)
+        result = str(req.response)
+        if len(result) > MAX_TREE_CHARS:
+            return result[:MAX_TREE_CHARS] + f"\n... TRUNCATED (total {len(result)} chars). Use lower depth to see full tree."
+        return result
