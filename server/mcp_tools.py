@@ -8,6 +8,8 @@ from .ops_schema import serialize_ops, validate_ops
 
 def register_tools(mcp, queue: JobQueue) -> None:
 
+    _read_lock = asyncio.Lock()
+
     def _plugin_warning() -> str:
         if not queue.plugin_connected():
             return " WARNING: Figma plugin has not polled recently — it may be disconnected."
@@ -105,14 +107,15 @@ def register_tools(mcp, queue: JobQueue) -> None:
         if not queue.plugin_connected():
             return "Plugin not connected. Open the Figma plugin and click Connect."
 
-        req = queue.create_read_request(depth)
+        async with _read_lock:
+            req = queue.create_read_request(depth)
 
-        try:
-            await asyncio.wait_for(req.event.wait(), timeout=30.0)
-        except asyncio.TimeoutError:
-            return "Timeout: plugin did not respond within 30 seconds. Is the Figma plugin connected?"
+            try:
+                await asyncio.wait_for(req.event.wait(), timeout=30.0)
+            except asyncio.TimeoutError:
+                return "Timeout: plugin did not respond within 30 seconds. Is the Figma plugin connected?"
 
-        result = str(req.response)
-        if len(result) > MAX_TREE_CHARS:
-            return result[:MAX_TREE_CHARS] + f"\n... TRUNCATED (total {len(result)} chars). Use lower depth to see full tree."
-        return result
+            result = str(req.response)
+            if len(result) > MAX_TREE_CHARS:
+                return result[:MAX_TREE_CHARS] + f"\n... TRUNCATED (total {len(result)} chars). Use lower depth to see full tree."
+            return result

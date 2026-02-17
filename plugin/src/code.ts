@@ -53,6 +53,26 @@ interface OpData {
   visible?: boolean;
 }
 
+const FONT_LOAD_TIMEOUT_MS = 10000;
+
+function loadFontWithTimeout(
+  fontName: FontName,
+  timeoutMs: number = FONT_LOAD_TIMEOUT_MS
+): Promise<void> {
+  return Promise.race([
+    figma.loadFontAsync(fontName),
+    new Promise<never>(function(_, reject) {
+      setTimeout(function() {
+        reject(new Error(
+          "Font load timed out after " + timeoutMs + "ms for " +
+          fontName.family + " " + fontName.style +
+          ". Check that this font is available in your Figma file."
+        ));
+      }, timeoutMs);
+    }),
+  ]);
+}
+
 function toFigmaFills(fills?: FillData[]): SolidPaint[] | undefined {
   if (!fills || fills.length === 0) return undefined;
   return fills.map(function(f) {
@@ -158,7 +178,7 @@ async function executeOps(
           var textTarget = target as TextNode;
           var family = op.fontFamily || (textTarget.fontName as FontName).family;
           var style = op.fontWeight || (textTarget.fontName as FontName).style;
-          await figma.loadFontAsync({ family: family, style: style });
+          await loadFontWithTimeout({ family: family, style: style });
           textTarget.fontName = { family: family, style: style };
           textTarget.characters = op.text;
           if (op.fontSize) textTarget.fontSize = op.fontSize;
@@ -166,7 +186,7 @@ async function executeOps(
           var textTarget2 = target as TextNode;
           var family2 = op.fontFamily || (textTarget2.fontName as FontName).family;
           var style2 = op.fontWeight || (textTarget2.fontName as FontName).style;
-          await figma.loadFontAsync({ family: family2, style: style2 });
+          await loadFontWithTimeout({ family: family2, style: style2 });
           textTarget2.fontName = { family: family2, style: style2 };
           if (op.fontSize) textTarget2.fontSize = op.fontSize;
         }
@@ -242,7 +262,7 @@ async function executeOps(
           var textNode = figma.createText();
           var tfamily = op.fontFamily || "Inter";
           var tstyle = op.fontWeight || "Regular";
-          await figma.loadFontAsync({ family: tfamily, style: tstyle });
+          await loadFontWithTimeout({ family: tfamily, style: tstyle });
           textNode.fontName = { family: tfamily, style: tstyle };
           textNode.characters = op.text || "";
           if (op.fontSize) textNode.fontSize = op.fontSize;

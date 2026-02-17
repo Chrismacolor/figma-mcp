@@ -12,12 +12,17 @@ class JobStatus(str, Enum):
     FAILED = "failed"
 
 
+STALE_JOB_TIMEOUT = 30.0  # seconds before an IN_PROGRESS job is considered stale
+JOB_TTL = 300.0  # seconds to keep completed/failed jobs before cleanup
+
+
 class Job:
     def __init__(self, ops: list[dict]) -> None:
         self.id = str(uuid.uuid4())
         self.ops = ops
         self.status = JobStatus.PENDING
         self.created_at = time.time()
+        self.dispatched_at: float | None = None
         self.result: dict[str, Any] | None = None
         self.error: str | None = None
         self.done_event = asyncio.Event()
@@ -77,6 +82,7 @@ class JobQueue:
         for job in self._jobs.values():
             if job.status == JobStatus.PENDING:
                 job.status = JobStatus.IN_PROGRESS
+                job.dispatched_at = time.time()
                 return job
         return None
 
@@ -97,6 +103,40 @@ class JobQueue:
         job.error = error
         job.done_event.set()
         return True
+
+    def reap_stale_jobs(self) -> list[str]:
+        """Reset IN_PROGRESS jobs that have been dispatched longer than
+        STALE_JOB_TIMEOUT back to FAILED. Returns IDs of reaped jobs."""
+        now = time.time()
+        reaped: list[str] = []
+        for job in self._jobs.values():
+            if (
+                job.status == JobStatus.IN_PROGRESS
+                and job.dispatched_at is not None
+                and (now - job.dispatched_at) > STALE_JOB_TIMEOUT
+            ):
+                job.status = JobStatus.FAILED
+                job.error = "Timed out: plugin did not respond within %ds" % int(STALE_JOB_TIMEOUT)
+                job.done_event.set()
+                reaped.append(job.id)
+        return reaped
+
+    def cleanup_old_jobs(self) -> int:
+        """Remove completed/failed jobs older than JOB_TTL. Returns count removed."""
+        now = time.time()
+        to_remove = [
+            jid
+            for jid, job in self._jobs.items()
+            if job.status in (JobStatus.COMPLETED, JobStatus.FAILED)
+            and (now - job.created_at) > JOB_TTL
+        ]
+        for jid in to_remove:
+            del self._jobs[jid]
+        return len(to_remove)
+
+    def has_pending_read(self) -> bool:
+        """True if a read request is currently in-flight."""
+        return self._pending_read is not None
 
     def create_read_request(self, depth: int = 2) -> ReadRequest:
         req = ReadRequest(depth)
