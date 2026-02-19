@@ -2,7 +2,6 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
-
 # Numeric font weight -> Figma string name mapping
 FONT_WEIGHT_MAP: dict[int, str] = {
     100: "Thin",

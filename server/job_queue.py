@@ -1,11 +1,11 @@
 import asyncio
 import time
 import uuid
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 
-class JobStatus(str, Enum):
+class JobStatus(StrEnum):
     PENDING = "pending"
     IN_PROGRESS = "in_progress"
     COMPLETED = "completed"
@@ -127,7 +127,7 @@ class JobQueue:
                 and (now - job.dispatched_at) > STALE_JOB_TIMEOUT
             ):
                 job.status = JobStatus.FAILED
-                job.error = "Timed out: plugin did not respond within %ds" % int(STALE_JOB_TIMEOUT)
+                job.error = f"Timed out: plugin did not respond within {int(STALE_JOB_TIMEOUT)}s"
                 job.done_event.set()
                 reaped.append(job.id)
         return reaped

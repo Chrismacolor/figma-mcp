@@ -13,7 +13,7 @@ def init_auth_token() -> str:
     source = "env" if os.environ.get("FIGMA_MCP_TOKEN") else "generated"
     print(f"\n{'='*60}", file=sys.stderr)
     print(f"  Auth token ({source}): {_auth_token}", file=sys.stderr)
-    print(f"  Paste this into the Figma plugin to connect.", file=sys.stderr)
+    print("  Paste this into the Figma plugin to connect.", file=sys.stderr)
     print(f"{'='*60}\n", file=sys.stderr)
     return _auth_token
 

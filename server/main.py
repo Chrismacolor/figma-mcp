@@ -84,7 +84,7 @@ def _check_port(port: int) -> None:
                 print(f"  PID(s) holding port {port}: {pids}", file=sys.stderr)
         except Exception:
             pass
-        print(f"  Stop the other process or set FIGMA_MCP_PORT to a different port.\n", file=sys.stderr)
+        print("  Stop the other process or set FIGMA_MCP_PORT to a different port.\n", file=sys.stderr)
         sys.exit(1)
     finally:
         sock.close()
