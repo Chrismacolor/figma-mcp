@@ -54,10 +54,21 @@ class ReadRequest:
         self.event = asyncio.Event()
 
 
+class ScreenshotRequest:
+    def __init__(self, node_id: str = "", scale: float = 1.0) -> None:
+        self.id = str(uuid.uuid4())
+        self.node_id = node_id
+        self.scale = scale
+        self.base64: str | None = None
+        self.error: str | None = None
+        self.event = asyncio.Event()
+
+
 class JobQueue:
     def __init__(self) -> None:
         self._jobs: dict[str, Job] = {}
         self._pending_read: ReadRequest | None = None
+        self._pending_screenshot: ScreenshotRequest | None = None
         self.last_plugin_poll: float = 0.0
 
     def plugin_connected(self) -> bool:
@@ -153,4 +164,33 @@ class JobQueue:
         req.response = data
         req.event.set()
         self._pending_read = None
+        return True
+
+    def has_pending_screenshot(self) -> bool:
+        return self._pending_screenshot is not None
+
+    def create_screenshot_request(self, node_id: str = "", scale: float = 1.0) -> ScreenshotRequest:
+        req = ScreenshotRequest(node_id, scale)
+        self._pending_screenshot = req
+        return req
+
+    def get_pending_screenshot(self) -> ScreenshotRequest | None:
+        return self._pending_screenshot
+
+    def fulfill_screenshot_request(self, req_id: str, base64_data: str) -> bool:
+        req = self._pending_screenshot
+        if not req or req.id != req_id:
+            return False
+        req.base64 = base64_data
+        req.event.set()
+        self._pending_screenshot = None
+        return True
+
+    def fail_screenshot_request(self, req_id: str, error: str) -> bool:
+        req = self._pending_screenshot
+        if not req or req.id != req_id:
+            return False
+        req.error = error
+        req.event.set()
+        self._pending_screenshot = None
         return True

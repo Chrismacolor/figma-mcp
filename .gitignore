@@ -11,5 +11,9 @@ node_modules/
 # Plugin build output
 plugin/dist/
 
+# Claude Code
+.claude/
+CLAUDE.md
+
 # OS
 .DS_Store

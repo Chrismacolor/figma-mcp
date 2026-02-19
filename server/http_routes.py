@@ -69,3 +69,33 @@ async def submit_read_response(req_id: str, body: ReadResponseBody):
     if _queue.fulfill_read_request(req_id, body.data):
         return {"ok": True}
     return Response(status_code=404, content='{"error": "read request not found"}')
+
+
+class ScreenshotResponseBody(BaseModel):
+    base64: str
+
+
+@router.get("/screenshot-request")
+async def get_screenshot_request():
+    assert _queue is not None
+    _queue.record_poll()
+    req = _queue.get_pending_screenshot()
+    if req is None:
+        return Response(status_code=204)
+    return {"id": req.id, "nodeId": req.node_id, "scale": req.scale}
+
+
+@router.post("/screenshot-request/{req_id}/response")
+async def submit_screenshot_response(req_id: str, body: ScreenshotResponseBody):
+    assert _queue is not None
+    if _queue.fulfill_screenshot_request(req_id, body.base64):
+        return {"ok": True}
+    return Response(status_code=404, content='{"error": "screenshot request not found"}')
+
+
+@router.post("/screenshot-request/{req_id}/error")
+async def submit_screenshot_error(req_id: str, body: ErrorBody):
+    assert _queue is not None
+    if _queue.fail_screenshot_request(req_id, body.error):
+        return {"ok": True}
+    return Response(status_code=404, content='{"error": "screenshot request not found"}')

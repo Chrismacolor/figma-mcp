@@ -1,5 +1,7 @@
 import asyncio
+import base64
 
+from fastmcp.utilities.types import Image
 from pydantic import ValidationError
 
 from .job_queue import JobQueue
@@ -9,6 +11,7 @@ from .ops_schema import serialize_ops, validate_ops
 def register_tools(mcp, queue: JobQueue) -> None:
 
     _read_lock = asyncio.Lock()
+    _screenshot_lock = asyncio.Lock()
 
     def _plugin_warning() -> str:
         if not queue.plugin_connected():
@@ -119,3 +122,29 @@ def register_tools(mcp, queue: JobQueue) -> None:
             if len(result) > MAX_TREE_CHARS:
                 return result[:MAX_TREE_CHARS] + f"\n... TRUNCATED (total {len(result)} chars). Use lower depth to see full tree."
             return result
+
+    @mcp.tool()
+    async def take_screenshot(node_id: str = "", scale: float = 1.0) -> Image | str:
+        """Take a screenshot (PNG) of a Figma node and return the image.
+
+        If node_id is empty, captures the current selection or first top-level frame.
+        Scale controls the export resolution (1.0 = 1x, 2.0 = 2x).
+
+        Returns the screenshot as an image that can be viewed directly.
+        Waits up to 30 seconds for the plugin to respond.
+        """
+        if not queue.plugin_connected():
+            return "Plugin not connected. Open the Figma plugin and click Connect."
+
+        async with _screenshot_lock:
+            req = queue.create_screenshot_request(node_id, scale)
+
+            try:
+                await asyncio.wait_for(req.event.wait(), timeout=30.0)
+            except asyncio.TimeoutError:
+                return "Timeout: plugin did not respond within 30 seconds. Is the Figma plugin connected?"
+
+            if req.error:
+                return f"Screenshot failed: {req.error}"
+
+            return Image(data=base64.b64decode(req.base64), format="png")

@@ -93,8 +93,33 @@ async function pollReadRequests() {
   }
 }
 
+async function pollScreenshotRequests() {
+  try {
+    const resp = await fetch(`${baseUrl()}/api/screenshot-request`, {
+      headers: getHeaders(),
+    });
+    if (resp.status === 204 || !resp.ok) return;
+
+    const req = await resp.json();
+    log(`Screenshot request: ${req.id} (nodeId=${req.nodeId || "auto"}, scale=${req.scale})`);
+    parent.postMessage(
+      {
+        pluginMessage: {
+          type: "screenshot-request",
+          requestId: req.id,
+          nodeId: req.nodeId || "",
+          scale: req.scale || 1,
+        },
+      },
+      "*"
+    );
+  } catch (err: any) {
+    log(`Screenshot poll error: ${err.message}`);
+  }
+}
+
 async function poll() {
-  await Promise.all([pollJobs(), pollReadRequests()]);
+  await Promise.all([pollJobs(), pollReadRequests(), pollScreenshotRequests()]);
 }
 
 function connect() {
@@ -178,6 +203,35 @@ window.onmessage = async (event: MessageEvent) => {
       );
     } catch (err: any) {
       log(`Failed to send read response: ${err.message}`);
+    }
+  } else if (msg.type === "screenshot-response") {
+    log(`Screenshot captured for ${msg.requestId}`);
+    try {
+      const base64 = btoa(msg.binaryStr);
+      await fetch(
+        `${baseUrl()}/api/screenshot-request/${msg.requestId}/response`,
+        {
+          method: "POST",
+          headers: getHeaders(),
+          body: JSON.stringify({ base64 }),
+        }
+      );
+    } catch (err: any) {
+      log(`Failed to send screenshot: ${err.message}`);
+    }
+  } else if (msg.type === "screenshot-error") {
+    log(`Screenshot error: ${msg.error}`);
+    try {
+      await fetch(
+        `${baseUrl()}/api/screenshot-request/${msg.requestId}/error`,
+        {
+          method: "POST",
+          headers: getHeaders(),
+          body: JSON.stringify({ error: msg.error }),
+        }
+      );
+    } catch (err: any) {
+      log(`Failed to report screenshot error: ${err.message}`);
     }
   }
 };

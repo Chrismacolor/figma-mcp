@@ -393,10 +393,67 @@ function readNodeTree(requestId: string, depth: number) {
   });
 }
 
+async function takeScreenshot(requestId: string, nodeId: string, scale: number) {
+  try {
+    var node: SceneNode | null = null;
+
+    if (nodeId) {
+      var found = figma.getNodeById(nodeId);
+      if (!found) {
+        throw new Error("Node '" + nodeId + "' not found");
+      }
+      if (found.type === "PAGE" || found.type === "DOCUMENT") {
+        throw new Error("Cannot export PAGE or DOCUMENT nodes. Specify a frame or layer node ID.");
+      }
+      node = found as SceneNode;
+    } else {
+      // Try current selection, then first top-level frame
+      var sel = figma.currentPage.selection;
+      if (sel.length > 0) {
+        node = sel[0];
+      } else {
+        var children = figma.currentPage.children;
+        if (children.length > 0) {
+          node = children[0];
+        }
+      }
+    }
+
+    if (!node) {
+      throw new Error("No node to screenshot. Select a node or pass a node_id.");
+    }
+
+    var bytes = await node.exportAsync({
+      format: "PNG",
+      constraint: { type: "SCALE", value: scale },
+    });
+
+    // Convert Uint8Array to binary string (sandbox lacks btoa)
+    var binaryStr = "";
+    for (var i = 0; i < bytes.length; i++) {
+      binaryStr += String.fromCharCode(bytes[i]);
+    }
+
+    figma.ui.postMessage({
+      type: "screenshot-response",
+      requestId: requestId,
+      binaryStr: binaryStr,
+    });
+  } catch (err: any) {
+    figma.ui.postMessage({
+      type: "screenshot-error",
+      requestId: requestId,
+      error: err.message || String(err),
+    });
+  }
+}
+
 figma.ui.onmessage = function(msg: any) {
   if (msg.type === "execute-ops") {
     executeOps(msg.jobId, msg.ops);
   } else if (msg.type === "read-node-tree") {
     readNodeTree(msg.requestId, msg.depth);
+  } else if (msg.type === "screenshot-request") {
+    takeScreenshot(msg.requestId, msg.nodeId, msg.scale);
   }
 };
