@@ -1,28 +1,53 @@
 # Figma MCP Server
 
-MCP server that lets Claude create and edit Figma designs through natural language — bridges Claude (MCP/stdio) to a Figma plugin (HTTP polling) via a single Python process.
+Let AI create, edit, and screenshot Figma designs through natural conversation. Works with Claude Desktop, Cursor, VS Code Copilot, Windsurf, and any MCP-compatible tool.
 
-## Architecture
+> "Make me a card component with a hero image, title, description, and a blue CTA button."
 
-```
-Claude Desktop ──[MCP/stdio]──► Python Server ◄──[HTTP/localhost:8400]──► Figma Plugin
-                                (single process)                          (polls every 1.5s)
-                                ├─ MCP tool handler
-                                ├─ FastAPI HTTP routes
-                                └─ In-memory job queue
-```
+The AI builds it directly on your Figma canvas.
 
-## Setup
+<img width="1432" height="959" alt="Claude creating a design in Figma via the MCP bridge" src="https://github.com/user-attachments/assets/4c976e47-89eb-40b1-bcde-e5eb338e7e80" />
 
-### 1. Python Server
+---
+
+## How It Complements the Official Figma MCP
+
+Figma's official MCP server and this project solve opposite sides of the same workflow. They are designed to work together.
+
+| | Official Figma MCP | This Project |
+|---|---|---|
+| **Direction** | Figma → Code (read designs, generate code) | Code/AI → Figma (create and edit designs) |
+| **Strengths** | Inspect layouts, extract design tokens, get screenshots for code generation, Code Connect | Create nodes, update properties, delete elements, build entire layouts from scratch |
+| **Requires** | Dev Mode seat (paid plan) | Free — runs locally with a development plugin |
+| **Rate limits** | 10–20 calls/min, 200–600/day | None — it's your local machine |
+
+### Why use both?
+
+**The official MCP reads. This one writes.** Together they close the loop:
+
+1. **Read** an existing design with the official MCP — "look at this login screen and understand the layout, spacing, and tokens"
+2. **Write** a variation with this server — "now build a signup screen following the same patterns, with an extra name field and a social login section"
+3. **Screenshot** your creation to verify it visually — "take a screenshot so I can see how it looks"
+4. **Read** the result again with the official MCP to generate production code
+
+Neither tool alone covers the full design-to-code-to-design cycle. Used together, your AI can read existing designs, create new ones, visually verify them, and generate production-ready code — all without leaving your editor.
+
+---
+
+## Quick Start
+
+### 1. Install the server
 
 ```bash
-python3 -m venv .venv
-source .venv/bin/activate
+git clone https://github.com/Chrismacolor/figma-mcp.git
+cd figma-mcp
+python3 -m venv .venv && source .venv/bin/activate
 pip install -e .
 ```
 
-### 2. Claude Desktop Configuration
+### 2. Connect your AI tool
+
+**Claude Desktop** (stdio):
 
 Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
 
@@ -30,136 +55,102 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
 {
   "mcpServers": {
     "figma": {
-      "command": "/path/to/figma-mcp/.venv/bin/figma-mcp",
+      "command": "/full/path/to/figma-mcp/.venv/bin/figma-mcp",
       "env": {
-        "FIGMA_MCP_TOKEN": "your-stable-token-here"
+        "FIGMA_MCP_TOKEN": "pick-a-stable-token"
       }
     }
   }
 }
 ```
 
-Setting `FIGMA_MCP_TOKEN` gives you a stable auth token across restarts. If omitted, a random token is generated each time and printed to stderr.
+**Cursor / VS Code Copilot / Windsurf** (HTTP):
 
-### 3. Figma Plugin
+Start the server manually first:
 
 ```bash
-cd plugin
-npm install
-npm run build
+source .venv/bin/activate
+FIGMA_MCP_TOKEN="pick-a-stable-token" figma-mcp
+```
+
+Then add this MCP server URL in your editor's settings:
+
+```
+http://localhost:8400/mcp
+```
+
+> Setting `FIGMA_MCP_TOKEN` gives you a stable auth token across restarts. If omitted, a random token is generated each startup and printed to the console.
+
+### 3. Install the Figma plugin
+
+```bash
+cd plugin && npm install && npm run build
 ```
 
 In Figma: **Plugins → Development → Import plugin from manifest** → select `plugin/manifest.json`.
 
-Open the plugin, paste your auth token, and click **Connect**. Keep the plugin panel open while using Claude.
+Open the plugin, paste your auth token, and click **Connect**. Keep the plugin panel open while using your AI tool.
 
-<img width="1432" height="959" alt="Screenshot 2026-02-10 at 8 44 20 AM" src="https://github.com/user-attachments/assets/4c976e47-89eb-40b1-bcde-e5eb338e7e80" />
+---
 
-## MCP Tools
+## What It Can Do
 
-| Tool | Description |
-|------|-------------|
-| `enqueue_ops` | Send a batch of design operations to Figma |
-| `get_job_status` | Wait for a job to complete (default 15s timeout) and return results |
-| `read_node_tree` | Read the current Figma page structure with rich property data |
-| `list_jobs` | List all jobs and their statuses |
+### Create designs from natural language
 
-All tools include plugin connection awareness — they warn if the Figma plugin appears disconnected.
+Ask your AI to build UI and it sends structured operations to Figma:
 
-## Ops DSL
+- **Frames** with auto-layout, padding, spacing, corner radius, shadows, and clipping
+- **Rectangles and ellipses** with fills, strokes, and opacity
+- **Text nodes** with font family, weight, size, alignment, line height, and letter spacing
+- **Nested layouts** — child elements reference their parents to build complex component trees
 
-Each op requires a unique `tempId` and an `op` type.
+### Edit existing designs
 
-### Op Types
+The AI can read the canvas, find nodes by ID, and update any property — recolor a button, change text content, resize a frame, toggle visibility, or delete elements entirely.
 
-| Op | Description |
-|----|-------------|
-| `CREATE_FRAME` | Create a frame (supports auto-layout, shadows) |
-| `CREATE_RECTANGLE` | Create a rectangle |
-| `CREATE_ELLIPSE` | Create an ellipse |
-| `CREATE_TEXT` | Create a text node |
-| `UPDATE_NODE` | Update properties of an existing node by `nodeId` |
-| `DELETE_NODE` | Remove an existing node by `nodeId` |
+### Screenshot your work
 
-### Parent Referencing
+The `take_screenshot` tool exports any node (or the current selection) as a PNG and returns it directly to the AI. This lets the AI visually verify what it created and iterate — "the button looks too small, make it wider and bump the font size."
 
-- `parentTempId` — reference a node declared earlier in the **same batch**
-- `parentNodeId` — reference a real Figma node ID (e.g. `"16:2"`) from a **previous batch's** result, enabling cross-batch nesting
+### Read the canvas
 
-### Examples
+`read_node_tree` returns a structured snapshot of every node on the current page — IDs, names, types, positions, sizes, fills, text content, font properties, and layout settings. The AI uses this to understand what already exists before making changes.
 
-**Create nodes:**
-```json
-[
-  {"op": "CREATE_FRAME", "tempId": "card", "name": "Card", "w": 360, "h": 200,
-   "layoutMode": "VERTICAL", "primaryAxisAlignItems": "CENTER",
-   "fills": [{"r": 1, "g": 1, "b": 1}],
-   "stroke": {"r": 0.9, "g": 0.9, "b": 0.9, "weight": 1},
-   "dropShadow": {"color": {"r": 0, "g": 0, "b": 0, "a": 0.1}, "offset": {"x": 0, "y": 2}, "radius": 8}},
+---
 
-  {"op": "CREATE_TEXT", "tempId": "h1", "parentTempId": "card",
-   "text": "Hello World", "fontSize": 24, "fontWeight": 700,
-   "fills": [{"r": 0.1, "g": 0.1, "b": 0.1}]}
-]
+## Tips for Best Results
+
+- **Be specific about layout.** "A 360px wide card with 24px padding, vertically stacked, 16px gap between items" gives better results than "make a card."
+- **Build in batches.** Create the outer frame first, check the result, then add children. This gives the AI a chance to course-correct.
+- **Use screenshots to iterate.** After the AI builds something, ask it to take a screenshot and critique its own work. It will often catch spacing or sizing issues and fix them.
+- **Combine with the official MCP.** Point the AI at an existing design with the official Figma MCP, then ask it to build a variation using this server. The AI inherits the design language automatically.
+- **Keep the plugin open.** The Figma plugin must be open and connected for operations to execute. If the AI reports the plugin is disconnected, switch to Figma and check the plugin panel.
+
+---
+
+## Environment Variables
+
+| Variable | Default | Description |
+|---|---|---|
+| `FIGMA_MCP_TOKEN` | Random per startup | Stable bearer token shared between server and plugin |
+| `FIGMA_MCP_PORT` | `8400` | HTTP port for the plugin bridge and MCP HTTP endpoint |
+
+---
+
+## How It Works
+
+```
+Your AI Tool ──[MCP stdio or HTTP]──► Python Server ◄──[HTTP polling]──► Figma Plugin
+                                      (single process)                    (runs inside Figma)
+                                      ├─ MCP tools
+                                      ├─ HTTP bridge
+                                      └─ Job queue
 ```
 
-**Update existing nodes** (using nodeId from previous job's tempIdMap):
-```json
-[
-  {"op": "UPDATE_NODE", "tempId": "u1", "nodeId": "17:65",
-   "fills": [{"r": 1, "g": 0, "b": 0}], "opacity": 0.8},
+1. Your AI calls an MCP tool (e.g., "create a frame") → the server queues a job
+2. The Figma plugin polls the server every 1.5s → picks up the job
+3. The plugin executes operations against the live Figma document
+4. Results (node IDs, screenshots, errors) flow back through the same bridge
+5. The AI receives the result and can continue building
 
-  {"op": "UPDATE_NODE", "tempId": "u2", "nodeId": "17:66",
-   "text": "Updated heading", "fontSize": 32, "fontWeight": 700}
-]
-```
-
-**Delete nodes:**
-```json
-[
-  {"op": "DELETE_NODE", "tempId": "d1", "nodeId": "17:65"}
-]
-```
-
-### Font Weights
-
-Accepts both string and numeric values:
-
-| Numeric | String |
-|---------|--------|
-| 100 | Thin |
-| 200 | Extra Light |
-| 300 | Light |
-| 400 | Regular |
-| 500 | Medium |
-| 600 | Semi Bold |
-| 700 | Bold |
-| 800 | Extra Bold |
-| 900 | Black |
-
-### Op Field Reference
-
-**All create ops:** `tempId`, `parentTempId`, `parentNodeId`, `name`, `x`, `y`, `fills [{r,g,b,a}]`, `stroke {r,g,b,a,weight,align}`, `opacity`
-
-**CREATE_FRAME:** `w`, `h`, `cornerRadius`, `layoutMode`, `itemSpacing`, `paddingLeft/Right/Top/Bottom`, `primaryAxisAlignItems`, `counterAxisAlignItems`, `clipsContent`, `dropShadow {color{r,g,b,a}, offset{x,y}, radius}`
-
-**CREATE_RECTANGLE:** `w`, `h`, `cornerRadius`
-
-**CREATE_ELLIPSE:** `w`, `h`
-
-**CREATE_TEXT:** `text`, `fontSize`, `fontFamily`, `fontWeight`, `textAlignHorizontal`, `textAutoResize`, `w`, `h`, `lineHeight`, `letterSpacing`
-
-**UPDATE_NODE:** `nodeId` (required), plus any property to change: `name`, `x`, `y`, `w`, `h`, `fills`, `stroke`, `opacity`, `cornerRadius`, `text`, `fontSize`, `fontFamily`, `fontWeight`, `visible`
-
-**DELETE_NODE:** `nodeId` (required)
-
-### read_node_tree Response
-
-The tree now includes rich property data for each node:
-- `id`, `name`, `type`, `x`, `y`, `width`, `height`
-- `fill` — first solid fill color `{r, g, b, a}`
-- `opacity` — if not 1
-- `cornerRadius` — if > 0
-- `text`, `fontSize`, `fontFamily`, `fontWeight` — for text nodes
-- `layoutMode`, `itemSpacing` — for auto-layout frames
-- `visible` — if hidden
+Everything runs locally. No data leaves your machine.
