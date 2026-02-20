@@ -68,6 +68,27 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
 }
 ```
 
+**Claude Code** (stdio or HTTP):
+
+Option A — stdio (server starts/stops with each Claude Code session):
+
+```bash
+claude mcp add figma-companion -e FIGMA_MCP_TOKEN=pick-a-stable-token -- /full/path/to/figma-mcp/.venv/bin/figma-mcp-companion
+```
+
+Option B — HTTP (start the server yourself, keeps running between sessions):
+
+```bash
+# In one terminal:
+source .venv/bin/activate
+FIGMA_MCP_TOKEN="pick-a-stable-token" figma-mcp-companion
+
+# Then register it:
+claude mcp add --transport http figma-companion http://localhost:8400/mcp
+```
+
+> To use alongside the official Figma MCP, add both — they complement each other. The official MCP reads design context and captures browser UI; this companion builds and edits individual nodes on the canvas.
+
 **Cursor / VS Code Copilot / Windsurf** (HTTP):
 
 Start the server manually first:
