@@ -20,7 +20,7 @@ def create_app() -> tuple[FastMCP, FastAPI, JobQueue]:
     queue = JobQueue()
 
     # MCP server (stdio + HTTP)
-    mcp = FastMCP("figma-mcp", instructions=(
+    mcp = FastMCP("figma-mcp-companion", instructions=(
         "You are a Figma design assistant. Use enqueue_ops to create designs in Figma. "
         "Each op needs a unique tempId. Use parentTempId to nest elements. "
         "After enqueuing, use get_job_status to check if the plugin executed the ops. "
@@ -33,7 +33,7 @@ def create_app() -> tuple[FastMCP, FastAPI, JobQueue]:
     mcp_http = mcp.http_app(path="/")
 
     # FastAPI app (HTTP for plugin polling + MCP transport)
-    api = FastAPI(title="figma-mcp-bridge", lifespan=mcp_http.router.lifespan_context)
+    api = FastAPI(title="figma-mcp-companion", lifespan=mcp_http.router.lifespan_context)
     api.add_middleware(
         CORSMiddleware,
         allow_origins=["*"],

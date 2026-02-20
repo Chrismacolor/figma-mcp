@@ -1,10 +1,10 @@
-# Figma MCP Server
+# Figma MCP Companion
 
-Let AI create, edit, and screenshot Figma designs through natural conversation. Works with Claude Desktop, Cursor, VS Code Copilot, Windsurf, and any MCP-compatible tool.
+Fine-grained canvas control for AI-assisted Figma design. Create, edit, and manipulate individual design nodes through natural conversation — works with Claude Desktop, Cursor, VS Code Copilot, Windsurf, and any MCP-compatible tool.
 
 > "Make me a card component with a hero image, title, description, and a blue CTA button."
 
-The AI builds it directly on your Figma canvas.
+The AI builds it directly on your Figma canvas, node by node.
 
 <img width="1432" height="959" alt="Claude creating a design in Figma via the MCP bridge" src="https://github.com/user-attachments/assets/4c976e47-89eb-40b1-bcde-e5eb338e7e80" />
 
@@ -12,25 +12,29 @@ The AI builds it directly on your Figma canvas.
 
 ## How It Complements the Official Figma MCP
 
-Figma's official MCP server and this project solve opposite sides of the same workflow. They are designed to work together.
+The [official Figma MCP server](https://developers.figma.com/docs/figma-mcp-server/) and this project solve different parts of the design workflow. They are designed to work together.
 
 | | Official Figma MCP | This Project |
 |---|---|---|
-| **Direction** | Figma → Code (read designs, generate code) | Code/AI → Figma (create and edit designs) |
-| **Strengths** | Inspect layouts, extract design tokens, get screenshots for code generation, Code Connect | Create nodes, update properties, delete elements, build entire layouts from scratch |
+| **Write approach** | `generate_figma_design` — captures live browser UI and converts it into editable Figma frames | Creates individual nodes (frames, rectangles, text, ellipses), sets properties, builds layouts from scratch |
+| **Read approach** | `get_design_context`, `get_metadata`, `get_variable_defs`, `get_screenshot` — rich design context extraction | `read_node_tree` — structured snapshot of the canvas; `take_screenshot` — PNG export of any node |
+| **Best for** | Design-to-code pipelines, capturing running UI back into Figma, design system integration via Code Connect | Building new designs from scratch, fine-grained edits to individual nodes, rapid prototyping on the canvas |
 | **Requires** | Dev Mode seat (paid plan) | Free — runs locally with a development plugin |
-| **Rate limits** | 10–20 calls/min, 200–600/day | None — it's your local machine |
+| **Rate limits** | Figma API limits apply | None — it's your local machine |
 
 ### Why use both?
 
-**The official MCP reads. This one writes.** Together they close the loop:
+The official MCP excels at **extracting design context for code generation** and **capturing finished UI back into Figma** as editable frames. This companion fills the gap for **precise, node-level canvas control** — creating designs from scratch, tweaking individual properties, and iterating on layouts without leaving your editor.
+
+A typical combined workflow:
 
 1. **Read** an existing design with the official MCP — "look at this login screen and understand the layout, spacing, and tokens"
-2. **Write** a variation with this server — "now build a signup screen following the same patterns, with an extra name field and a social login section"
+2. **Build** a variation with this companion — "now create a signup screen following the same patterns, with an extra name field and a social login section"
 3. **Screenshot** your creation to verify it visually — "take a screenshot so I can see how it looks"
-4. **Read** the result again with the official MCP to generate production code
+4. **Iterate** with fine-grained edits — "make the CTA button wider and bump the font to 18px"
+5. **Capture** the finished UI with the official MCP's `generate_figma_design` to bring production code back to the canvas
 
-Neither tool alone covers the full design-to-code-to-design cycle. Used together, your AI can read existing designs, create new ones, visually verify them, and generate production-ready code — all without leaving your editor.
+Neither tool alone covers the full workflow. Together, your AI can read existing designs, build new ones node by node, visually verify them, and bridge between code and canvas — all without leaving your editor.
 
 ---
 
@@ -54,8 +58,8 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
 ```json
 {
   "mcpServers": {
-    "figma": {
-      "command": "/full/path/to/figma-mcp/.venv/bin/figma-mcp",
+    "figma-companion": {
+      "command": "/full/path/to/figma-mcp/.venv/bin/figma-mcp-companion",
       "env": {
         "FIGMA_MCP_TOKEN": "pick-a-stable-token"
       }
@@ -70,7 +74,7 @@ Start the server manually first:
 
 ```bash
 source .venv/bin/activate
-FIGMA_MCP_TOKEN="pick-a-stable-token" figma-mcp
+FIGMA_MCP_TOKEN="pick-a-stable-token" figma-mcp-companion
 ```
 
 Then add this MCP server URL in your editor's settings:
@@ -123,7 +127,7 @@ The `take_screenshot` tool exports any node (or the current selection) as a PNG 
 - **Be specific about layout.** "A 360px wide card with 24px padding, vertically stacked, 16px gap between items" gives better results than "make a card."
 - **Build in batches.** Create the outer frame first, check the result, then add children. This gives the AI a chance to course-correct.
 - **Use screenshots to iterate.** After the AI builds something, ask it to take a screenshot and critique its own work. It will often catch spacing or sizing issues and fix them.
-- **Combine with the official MCP.** Point the AI at an existing design with the official Figma MCP, then ask it to build a variation using this server. The AI inherits the design language automatically.
+- **Combine with the official MCP.** Point the AI at an existing design with the official Figma MCP, then ask it to build a variation using this companion. The AI inherits the design language automatically.
 - **Keep the plugin open.** The Figma plugin must be open and connected for operations to execute. If the AI reports the plugin is disconnected, switch to Figma and check the plugin panel.
 
 ---

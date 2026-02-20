@@ -1,7 +1,7 @@
 [project]
-name = "figma-mcp"
+name = "figma-mcp-companion"
 version = "0.1.0"
-description = "MCP server bridging Claude to Figma via plugin HTTP polling"
+description = "Companion MCP server for fine-grained Figma canvas control — create, edit, and manipulate individual design nodes"
 requires-python = ">=3.11"
 dependencies = [
     "fastmcp>=2.3",
@@ -22,7 +22,8 @@ dev = [
 include = ["server*"]
 
 [project.scripts]
-figma-mcp = "server.main:main"
+figma-mcp-companion = "server.main:main"
+figma-mcp = "server.main:main"  # backward compat alias
 
 [tool.ruff]
 target-version = "py311"

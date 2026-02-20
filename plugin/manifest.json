@@ -1,6 +1,6 @@
 {
-  "name": "Figma MCP Bridge",
-  "id": "figma-mcp-bridge-dev",
+  "name": "Figma MCP Companion",
+  "id": "figma-mcp-companion-dev",
   "api": "1.0.0",
   "main": "dist/code.js",
   "ui": "dist/ui.html",
