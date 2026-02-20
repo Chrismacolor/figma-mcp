@@ -73,7 +73,7 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
 Option A — stdio (server starts/stops with each Claude Code session):
 
 ```bash
-claude mcp add -e FIGMA_MCP_TOKEN=pick-a-stable-token figma-companion -- /full/path/to/figma-mcp/.venv/bin/figma-mcp-companion
+claude mcp add figma-companion -e FIGMA_MCP_TOKEN=pick-a-stable-token -- /full/path/to/figma-mcp/.venv/bin/figma-mcp-companion
 ```
 
 Option B — HTTP (start the server yourself, keeps running between sessions):
