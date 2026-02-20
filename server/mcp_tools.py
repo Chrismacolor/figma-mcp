@@ -22,6 +22,11 @@ def register_tools(mcp, queue: JobQueue) -> None:
     async def enqueue_ops(ops: list[dict]) -> str:
         """Enqueue a batch of Figma design operations for the plugin to execute.
 
+        This is the core tool for creating and modifying designs on the live Figma canvas.
+        Use this for building new layouts from scratch or making fine-grained edits to
+        individual nodes. For capturing running browser UI as Figma frames, use the official
+        Figma MCP's generate_figma_design tool instead.
+
         Each op must have an "op" field and a unique "tempId" string.
 
         Op types: CREATE_FRAME, CREATE_RECTANGLE, CREATE_ELLIPSE, CREATE_TEXT,
@@ -30,7 +35,8 @@ def register_tools(mcp, queue: JobQueue) -> None:
         Parent referencing (two options, use one per op):
         - "parentTempId": reference a tempId declared earlier IN THIS BATCH
         - "parentNodeId": reference a real Figma node ID (e.g. "16:2") from a previous
-          job's result tempIdMap — use this to add children to existing nodes across batches
+          job's result tempIdMap, or from the official Figma MCP's get_metadata output —
+          use this to add children to existing nodes across batches
 
         Common fields: tempId, parentTempId, parentNodeId, name, x, y,
                       fills [{r,g,b,a}], stroke {r,g,b,a,weight,align}, opacity.
@@ -43,8 +49,9 @@ def register_tools(mcp, queue: JobQueue) -> None:
         Text fields: text, fontSize, fontFamily, fontWeight (string like "Bold" or
                      numeric like 700), textAlignHorizontal,
                      textAutoResize, w, h, lineHeight, letterSpacing.
-        UPDATE_NODE fields: nodeId (required), plus any property to change (name, x, y,
-                     w, h, fills, opacity, text, fontSize, etc.)
+        UPDATE_NODE fields: nodeId (required — accepts real Figma node IDs, including
+                     those from the official MCP's get_metadata), plus any property to
+                     change (name, x, y, w, h, fills, opacity, text, fontSize, etc.)
         DELETE_NODE fields: nodeId (required) — removes the node from the canvas.
 
         Returns the job ID. Use get_job_status to wait for the result.
@@ -60,11 +67,12 @@ def register_tools(mcp, queue: JobQueue) -> None:
 
     @mcp.tool()
     async def get_job_status(job_id: str, wait: int = 15) -> str:
-        """Get the status of a previously enqueued job.
+        """Get the status of a job previously submitted via enqueue_ops.
 
         Waits up to `wait` seconds (default 15) for a pending/in_progress job to
-        finish before returning. Returns job status, tempId-to-nodeId mappings
-        on success, or error message on failure.
+        finish before returning. On success, returns tempId-to-nodeId mappings —
+        these are real Figma node IDs you can use in subsequent UPDATE_NODE /
+        DELETE_NODE ops, or pass to the official Figma MCP's tools.
         """
         job = queue.get_job(job_id)
         if job is None:
@@ -98,11 +106,17 @@ def register_tools(mcp, queue: JobQueue) -> None:
 
     @mcp.tool()
     async def read_node_tree(depth: int = 3) -> str:
-        """Read the current Figma page's node tree.
+        """Read the live Figma canvas node tree via the plugin.
 
         Returns node tree with id, name, type, x, y, width, height, fills,
         opacity, cornerRadius, text content, fontSize, fontWeight, and children
-        up to the specified depth (default 3).
+        up to the specified depth (default 3). Node IDs in the response can be
+        passed to UPDATE_NODE or DELETE_NODE operations in enqueue_ops.
+
+        This reads the LIVE canvas state (including unsaved changes). For richer
+        design context including variables, design tokens, and Code Connect
+        mappings, use the official Figma MCP's get_design_context and
+        get_variable_defs tools instead.
 
         Response is capped at ~50K chars. Use lower depth for large pages.
         Waits up to 30 seconds for the plugin to respond.
@@ -125,7 +139,12 @@ def register_tools(mcp, queue: JobQueue) -> None:
 
     @mcp.tool()
     async def take_screenshot(node_id: str = "", scale: float = 1.0) -> Image | str:
-        """Take a screenshot (PNG) of a Figma node and return the image.
+        """Take a screenshot (PNG) of a node on the live Figma canvas via the plugin.
+
+        Unlike the official Figma MCP's get_screenshot (which works on saved file
+        state via the API), this captures the LIVE canvas including any unsaved
+        changes — useful for verifying designs you just created or edited with
+        enqueue_ops.
 
         If node_id is empty, captures the current selection or first top-level frame.
         Scale controls the export resolution (1.0 = 1x, 2.0 = 2x).

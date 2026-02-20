@@ -21,11 +21,29 @@ def create_app() -> tuple[FastMCP, FastAPI, JobQueue]:
 
     # MCP server (stdio + HTTP)
     mcp = FastMCP("figma-mcp-companion", instructions=(
-        "You are a Figma design assistant. Use enqueue_ops to create designs in Figma. "
-        "Each op needs a unique tempId. Use parentTempId to nest elements. "
-        "After enqueuing, use get_job_status to check if the plugin executed the ops. "
-        "Use read_node_tree to see what's currently on the Figma canvas. "
-        "Use take_screenshot to see a visual of the current design."
+        "You are Figma MCP Companion — a tool for fine-grained, node-level canvas control. "
+        "You create, edit, and delete individual Figma nodes (frames, rectangles, ellipses, text). "
+        "\n\n"
+        "WHEN TO USE THIS vs THE OFFICIAL FIGMA MCP:\n"
+        "- Use THIS companion to build new designs from scratch, edit individual node properties "
+        "(colors, sizes, fonts, layout), or delete nodes. This works on the LIVE canvas through "
+        "a Figma plugin.\n"
+        "- Use the official Figma MCP for reading rich design context (get_design_context), "
+        "extracting design tokens and variables (get_variable_defs), Code Connect mappings, "
+        "and capturing running browser UI as Figma frames (generate_figma_design).\n"
+        "\n"
+        "INTEROP: Node IDs returned by the official MCP (e.g. from get_metadata) are real Figma "
+        "node IDs. You can pass them directly to UPDATE_NODE or DELETE_NODE via the nodeId field, "
+        "or use them as parentNodeId when creating child nodes. This lets you read a design with "
+        "the official MCP and then edit it with this companion.\n"
+        "\n"
+        "WORKFLOW:\n"
+        "1. Use enqueue_ops to send a batch of create/update/delete operations.\n"
+        "2. Use get_job_status to wait for the plugin to execute them.\n"
+        "3. Use read_node_tree to see what's on the canvas (for quick inspection).\n"
+        "4. Use take_screenshot to visually verify the result.\n"
+        "Each op needs a unique tempId. Use parentTempId to nest elements within the same batch, "
+        "or parentNodeId to add children to existing nodes."
     ))
     register_tools(mcp, queue)
 
