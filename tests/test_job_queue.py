@@ -1,4 +1,4 @@
-import asyncio
+import threading
 import time
 
 from server.job_queue import (
@@ -94,19 +94,20 @@ class TestFailJob:
 
 
 class TestDoneEvent:
-    async def test_event_fires_on_complete(self):
+    def test_event_fires_on_complete(self):
         q = JobQueue()
         job = q.create_job([])
         q.next_pending()
 
-        async def completer():
-            await asyncio.sleep(0.05)
+        def completer():
+            time.sleep(0.05)
             q.complete_job(job.id, {"ok": True})
 
-        task = asyncio.create_task(completer())
-        await asyncio.wait_for(job.done_event.wait(), timeout=2.0)
+        t = threading.Thread(target=completer)
+        t.start()
+        assert job.done_event.wait(timeout=2.0)
         assert job.done_event.is_set()
-        await task
+        t.join()
 
 
 class TestReapStaleJobs:

@@ -1,4 +1,4 @@
-import asyncio
+import threading
 import time
 import uuid
 from enum import StrEnum
@@ -25,7 +25,7 @@ class Job:
         self.dispatched_at: float | None = None
         self.result: dict[str, Any] | None = None
         self.error: str | None = None
-        self.done_event = asyncio.Event()
+        self.done_event = threading.Event()
 
     def to_dict(self) -> dict:
         return {
@@ -51,7 +51,7 @@ class ReadRequest:
         self.id = str(uuid.uuid4())
         self.depth = depth
         self.response: dict | None = None
-        self.event = asyncio.Event()
+        self.event = threading.Event()
 
 
 class ScreenshotRequest:
@@ -61,7 +61,7 @@ class ScreenshotRequest:
         self.scale = scale
         self.base64: str | None = None
         self.error: str | None = None
-        self.event = asyncio.Event()
+        self.event = threading.Event()
 
 
 class JobQueue:

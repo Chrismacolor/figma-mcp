@@ -28,7 +28,7 @@ class ReadResponseBody(BaseModel):
 
 
 @router.get("/jobs/next")
-async def get_next_job():
+def get_next_job():
     assert _queue is not None
     _queue.record_poll()
     job = _queue.next_pending()
@@ -38,7 +38,7 @@ async def get_next_job():
 
 
 @router.post("/jobs/{job_id}/complete")
-async def complete_job(job_id: str, body: CompleteBody):
+def complete_job(job_id: str, body: CompleteBody):
     assert _queue is not None
     if _queue.complete_job(job_id, body.result):
         return {"ok": True}
@@ -46,7 +46,7 @@ async def complete_job(job_id: str, body: CompleteBody):
 
 
 @router.post("/jobs/{job_id}/error")
-async def error_job(job_id: str, body: ErrorBody):
+def error_job(job_id: str, body: ErrorBody):
     assert _queue is not None
     if _queue.fail_job(job_id, body.error):
         return {"ok": True}
@@ -54,7 +54,7 @@ async def error_job(job_id: str, body: ErrorBody):
 
 
 @router.get("/read-request")
-async def get_read_request():
+def get_read_request():
     assert _queue is not None
     _queue.record_poll()
     req = _queue.get_pending_read()
@@ -64,7 +64,7 @@ async def get_read_request():
 
 
 @router.post("/read-request/{req_id}/response")
-async def submit_read_response(req_id: str, body: ReadResponseBody):
+def submit_read_response(req_id: str, body: ReadResponseBody):
     assert _queue is not None
     if _queue.fulfill_read_request(req_id, body.data):
         return {"ok": True}
@@ -76,7 +76,7 @@ class ScreenshotResponseBody(BaseModel):
 
 
 @router.get("/screenshot-request")
-async def get_screenshot_request():
+def get_screenshot_request():
     assert _queue is not None
     _queue.record_poll()
     req = _queue.get_pending_screenshot()
@@ -86,7 +86,7 @@ async def get_screenshot_request():
 
 
 @router.post("/screenshot-request/{req_id}/response")
-async def submit_screenshot_response(req_id: str, body: ScreenshotResponseBody):
+def submit_screenshot_response(req_id: str, body: ScreenshotResponseBody):
     assert _queue is not None
     if _queue.fulfill_screenshot_request(req_id, body.base64):
         return {"ok": True}
@@ -94,7 +94,7 @@ async def submit_screenshot_response(req_id: str, body: ScreenshotResponseBody):
 
 
 @router.post("/screenshot-request/{req_id}/error")
-async def submit_screenshot_error(req_id: str, body: ErrorBody):
+def submit_screenshot_error(req_id: str, body: ErrorBody):
     assert _queue is not None
     if _queue.fail_screenshot_request(req_id, body.error):
         return {"ok": True}

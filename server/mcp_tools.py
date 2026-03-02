@@ -79,10 +79,7 @@ def register_tools(mcp, queue: JobQueue) -> None:
             return f"Job not found: {job_id}"
 
         if job.status.value in ("pending", "in_progress") and wait > 0:
-            try:
-                await asyncio.wait_for(job.done_event.wait(), timeout=float(wait))
-            except TimeoutError:
-                pass
+            await asyncio.to_thread(job.done_event.wait, float(wait))
 
         info = job.to_dict()
         msg = str(info)
@@ -127,9 +124,8 @@ def register_tools(mcp, queue: JobQueue) -> None:
         async with _read_lock:
             req = queue.create_read_request(depth)
 
-            try:
-                await asyncio.wait_for(req.event.wait(), timeout=30.0)
-            except TimeoutError:
+            done = await asyncio.to_thread(req.event.wait, 30.0)
+            if not done:
                 return "Timeout: plugin did not respond within 30 seconds. Is the Figma plugin connected?"
 
             result = str(req.response)
@@ -158,9 +154,8 @@ def register_tools(mcp, queue: JobQueue) -> None:
         async with _screenshot_lock:
             req = queue.create_screenshot_request(node_id, scale)
 
-            try:
-                await asyncio.wait_for(req.event.wait(), timeout=30.0)
-            except TimeoutError:
+            done = await asyncio.to_thread(req.event.wait, 30.0)
+            if not done:
                 return "Timeout: plugin did not respond within 30 seconds. Is the Figma plugin connected?"
 
             if req.error:

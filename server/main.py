@@ -1,7 +1,8 @@
-import asyncio
 import os
 import socket
 import sys
+import threading
+import time
 
 import uvicorn
 from fastapi import FastAPI
@@ -16,10 +17,7 @@ from .mcp_tools import register_tools
 HTTP_PORT = int(os.environ.get("FIGMA_MCP_PORT", "8400"))
 
 
-def create_app() -> tuple[FastMCP, FastAPI, JobQueue]:
-    queue = JobQueue()
-
-    # MCP server (stdio + HTTP)
+def _create_mcp(queue: JobQueue) -> FastMCP:
     mcp = FastMCP("figma-mcp-companion", instructions=(
         "You are Figma MCP Companion — a tool for fine-grained, node-level canvas control. "
         "You create, edit, and delete individual Figma nodes (frames, rectangles, ellipses, text). "
@@ -46,36 +44,48 @@ def create_app() -> tuple[FastMCP, FastAPI, JobQueue]:
         "or parentNodeId to add children to existing nodes."
     ))
     register_tools(mcp, queue)
+    return mcp
 
-    # Get MCP HTTP sub-app for Streamable HTTP transport
-    mcp_http = mcp.http_app(path="/")
 
-    # FastAPI app (HTTP for plugin polling + MCP transport)
-    api = FastAPI(title="figma-mcp-companion", lifespan=mcp_http.router.lifespan_context)
+def _create_api(queue: JobQueue) -> FastAPI:
+    api = FastAPI(title="figma-mcp-companion")
     api.add_middleware(
         CORSMiddleware,
         allow_origins=["*"],
         allow_methods=["*"],
         allow_headers=["*"],
     )
-
-    api_router = init_routes(queue)
-    api.include_router(api_router)
-
-    # Mount MCP Streamable HTTP transport at /mcp
-    api.mount("/mcp", mcp_http)
+    api.include_router(init_routes(queue))
 
     @api.get("/health")
-    async def health():
+    def health():
         return {"status": "ok"}
 
-    return mcp, api, queue
+    return api
 
 
-async def _reaper_loop(queue: JobQueue):
+def _run_http(api: FastAPI, port: int) -> None:
+    """Run the HTTP bridge in this thread. Binds with SO_REUSEADDR to avoid stale port issues."""
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    sock.bind(("127.0.0.1", port))
+    sock.set_inheritable(False)
+
+    config = uvicorn.Config(
+        api,
+        host="127.0.0.1",
+        port=port,
+        log_level="warning",
+        fd=sock.fileno(),
+    )
+    server = uvicorn.Server(config)
+    server.run()
+
+
+def _run_reaper(queue: JobQueue) -> None:
     """Periodically reap stale jobs and clean up old completed/failed jobs."""
     while True:
-        await asyncio.sleep(10)
+        time.sleep(10)
         reaped = queue.reap_stale_jobs()
         if reaped:
             print(f"Reaped {len(reaped)} stale job(s): {reaped}", file=sys.stderr)
@@ -84,58 +94,26 @@ async def _reaper_loop(queue: JobQueue):
             print(f"Cleaned up {cleaned} old job(s)", file=sys.stderr)
 
 
-def _check_port(port: int) -> None:
-    """Check if the port is already in use and exit with a clear error if so."""
-    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    try:
-        sock.bind(("127.0.0.1", port))
-    except OSError:
-        print(f"\nERROR: Port {port} is already in use.", file=sys.stderr)
-        try:
-            import subprocess
-            result = subprocess.run(
-                ["lsof", "-ti", f"tcp:{port}"],
-                capture_output=True, text=True, timeout=5,
-            )
-            pids = result.stdout.strip()
-            if pids:
-                print(f"  PID(s) holding port {port}: {pids}", file=sys.stderr)
-        except Exception:
-            pass
-        print("  Stop the other process or set FIGMA_MCP_PORT to a different port.\n", file=sys.stderr)
-        sys.exit(1)
-    finally:
-        sock.close()
-
-
-async def run_async():
-    _check_port(HTTP_PORT)
-
-    mcp, api, queue = create_app()
+def main():
+    queue = JobQueue()
+    mcp = _create_mcp(queue)
+    api = _create_api(queue)
 
     init_auth_token()
 
-    config = uvicorn.Config(
-        api,
-        host="127.0.0.1",
-        port=HTTP_PORT,
-        log_level="warning",
-    )
-    http_server = uvicorn.Server(config)
+    # Start HTTP bridge in a daemon thread — dies when main thread exits
+    http_thread = threading.Thread(target=_run_http, args=(api, HTTP_PORT), daemon=True)
+    http_thread.start()
+
+    # Start reaper in a daemon thread
+    reaper_thread = threading.Thread(target=_run_reaper, args=(queue,), daemon=True)
+    reaper_thread.start()
 
     print(f"HTTP bridge listening on http://127.0.0.1:{HTTP_PORT}", file=sys.stderr)
-    print(f"MCP (Streamable HTTP) endpoint: http://127.0.0.1:{HTTP_PORT}/mcp", file=sys.stderr)
     print("MCP (stdio) transport: ready", file=sys.stderr)
 
-    await asyncio.gather(
-        mcp.run_async(transport="stdio"),
-        http_server.serve(),
-        _reaper_loop(queue),
-    )
-
-
-def main():
-    asyncio.run(run_async())
+    # MCP owns the process lifecycle — when it exits, daemon threads die
+    mcp.run(transport="stdio")
 
 
 if __name__ == "__main__":
