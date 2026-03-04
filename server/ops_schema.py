@@ -59,6 +59,9 @@ class DropShadow(BaseModel):
     radius: float = Field(default=4, ge=0, le=1000)
 
 
+LayoutSizing = Literal["FIXED", "HUG", "FILL"]
+
+
 class BaseOp(BaseModel):
     temp_id: str = Field(alias="tempId")
     parent_temp_id: str | None = Field(default=None, alias="parentTempId")
@@ -69,14 +72,20 @@ class BaseOp(BaseModel):
     fills: list[Fill] | None = None
     stroke: Stroke | None = None
     opacity: float = Field(default=1, ge=0, le=1)
+    layout_sizing_horizontal: LayoutSizing | None = Field(
+        default=None, alias="layoutSizingHorizontal"
+    )
+    layout_sizing_vertical: LayoutSizing | None = Field(
+        default=None, alias="layoutSizingVertical"
+    )
 
     model_config = {"populate_by_name": True}
 
 
 class CreateFrameOp(BaseOp):
     op: Literal["CREATE_FRAME"]
-    w: float = Field(default=100, gt=0, le=10000, alias="w")
-    h: float = Field(default=100, gt=0, le=10000, alias="h")
+    w: float | None = Field(default=None, gt=0, le=10000, alias="w")
+    h: float | None = Field(default=None, gt=0, le=10000, alias="h")
     corner_radius: float = Field(default=0, ge=0, le=1000, alias="cornerRadius")
     layout_mode: Literal["NONE", "HORIZONTAL", "VERTICAL"] = Field(
         default="NONE", alias="layoutMode"
@@ -102,11 +111,33 @@ class CreateRectangleOp(BaseOp):
     h: float = Field(default=100, gt=0, le=10000, alias="h")
     corner_radius: float = Field(default=0, ge=0, le=1000, alias="cornerRadius")
 
+    @model_validator(mode="after")
+    def reject_hug(self) -> "CreateRectangleOp":
+        for axis, val in [("Horizontal", self.layout_sizing_horizontal),
+                          ("Vertical", self.layout_sizing_vertical)]:
+            if val == "HUG":
+                raise ValueError(
+                    f"layoutSizing{axis} 'HUG' is not valid on rectangles "
+                    "(only frames and text can hug contents)"
+                )
+        return self
+
 
 class CreateEllipseOp(BaseOp):
     op: Literal["CREATE_ELLIPSE"]
     w: float = Field(default=100, gt=0, le=10000, alias="w")
     h: float = Field(default=100, gt=0, le=10000, alias="h")
+
+    @model_validator(mode="after")
+    def reject_hug(self) -> "CreateEllipseOp":
+        for axis, val in [("Horizontal", self.layout_sizing_horizontal),
+                          ("Vertical", self.layout_sizing_vertical)]:
+            if val == "HUG":
+                raise ValueError(
+                    f"layoutSizing{axis} 'HUG' is not valid on ellipses "
+                    "(only frames and text can hug contents)"
+                )
+        return self
 
 
 class CreateTextOp(BaseOp):
@@ -165,6 +196,12 @@ class UpdateNodeOp(BaseModel):
     font_family: str | None = Field(default=None, alias="fontFamily")
     font_weight: str | None = Field(default=None, alias="fontWeight")
     visible: bool | None = None
+    layout_sizing_horizontal: LayoutSizing | None = Field(
+        default=None, alias="layoutSizingHorizontal"
+    )
+    layout_sizing_vertical: LayoutSizing | None = Field(
+        default=None, alias="layoutSizingVertical"
+    )
 
     model_config = {"populate_by_name": True}
 

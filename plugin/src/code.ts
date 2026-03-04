@@ -51,6 +51,8 @@ interface OpData {
   lineHeight?: number;
   letterSpacing?: number;
   visible?: boolean;
+  layoutSizingHorizontal?: "FIXED" | "HUG" | "FILL";
+  layoutSizingVertical?: "FIXED" | "HUG" | "FILL";
 }
 
 const FONT_LOAD_TIMEOUT_MS = 10000;
@@ -172,6 +174,12 @@ async function executeOps(
           (target as any).cornerRadius = op.cornerRadius;
         }
         if (op.visible !== undefined && "visible" in target) (target as any).visible = op.visible;
+        if (op.layoutSizingHorizontal && "layoutSizingHorizontal" in target) {
+          (target as any).layoutSizingHorizontal = op.layoutSizingHorizontal;
+        }
+        if (op.layoutSizingVertical && "layoutSizingVertical" in target) {
+          (target as any).layoutSizingVertical = op.layoutSizingVertical;
+        }
 
         // Text-specific updates
         if (op.text !== undefined && target.type === "TEXT") {
@@ -214,12 +222,12 @@ async function executeOps(
       switch (op.op) {
         case "CREATE_FRAME": {
           var frame = figma.createFrame();
-          frame.resize(op.w || 100, op.h || 100);
+          if (op.w != null || op.h != null) {
+            frame.resize(op.w || 100, op.h || 100);
+          }
           if (op.cornerRadius) frame.cornerRadius = op.cornerRadius;
           if (op.layoutMode && op.layoutMode !== "NONE") {
             frame.layoutMode = op.layoutMode;
-            frame.primaryAxisSizingMode = "AUTO";
-            frame.counterAxisSizingMode = "AUTO";
           }
           if (op.itemSpacing !== undefined) frame.itemSpacing = op.itemSpacing;
           if (op.paddingLeft !== undefined) frame.paddingLeft = op.paddingLeft;
@@ -294,6 +302,21 @@ async function executeOps(
       node.x = op.x || 0;
       node.y = op.y || 0;
       parent.appendChild(node);
+
+      // Apply layout sizing AFTER appendChild (Figma requires parent context)
+      if (op.layoutSizingHorizontal || op.layoutSizingVertical) {
+        // Explicit sizing provided — apply it
+        if (op.layoutSizingHorizontal && "layoutSizingHorizontal" in node) {
+          (node as any).layoutSizingHorizontal = op.layoutSizingHorizontal;
+        }
+        if (op.layoutSizingVertical && "layoutSizingVertical" in node) {
+          (node as any).layoutSizingVertical = op.layoutSizingVertical;
+        }
+      } else if (op.op === "CREATE_FRAME" && op.layoutMode && op.layoutMode !== "NONE" && op.w == null && op.h == null) {
+        // Auto-layout frame with no explicit w/h/sizing → default to HUG
+        (node as FrameNode).layoutSizingHorizontal = "HUG";
+        (node as FrameNode).layoutSizingVertical = "HUG";
+      }
 
       tempIdMap.set(op.tempId, node);
       resultMap[op.tempId] = node.id;
@@ -372,6 +395,16 @@ function serializeNode(node: BaseNode, depth: number): any {
       data.layoutMode = lm;
       data.itemSpacing = (node as any).itemSpacing;
     }
+  }
+
+  // Layout sizing (only include non-FIXED values)
+  if ("layoutSizingHorizontal" in node) {
+    var lsh = (node as any).layoutSizingHorizontal;
+    if (lsh && lsh !== "FIXED") data.layoutSizingHorizontal = lsh;
+  }
+  if ("layoutSizingVertical" in node) {
+    var lsv = (node as any).layoutSizingVertical;
+    if (lsv && lsv !== "FIXED") data.layoutSizingVertical = lsv;
   }
 
   if (depth > 0 && "children" in node) {

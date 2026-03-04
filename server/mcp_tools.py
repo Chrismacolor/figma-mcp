@@ -39,8 +39,14 @@ def register_tools(mcp, queue: JobQueue) -> None:
           use this to add children to existing nodes across batches
 
         Common fields: tempId, parentTempId, parentNodeId, name, x, y,
-                      fills [{r,g,b,a}], stroke {r,g,b,a,weight,align}, opacity.
-        Frame fields: w, h, cornerRadius, layoutMode (NONE/HORIZONTAL/VERTICAL),
+                      fills [{r,g,b,a}], stroke {r,g,b,a,weight,align}, opacity,
+                      layoutSizingHorizontal, layoutSizingVertical (FIXED/HUG/FILL).
+        Layout sizing: Controls how a node sizes within its parent's auto-layout.
+                      FIXED = explicit w/h, HUG = shrink to content (frames/text only),
+                      FILL = expand to fill parent. Omit to let Figma default.
+                      Auto-layout frames with no explicit w/h default to HUG.
+        Frame fields: w (optional), h (optional), cornerRadius,
+                      layoutMode (NONE/HORIZONTAL/VERTICAL),
                       itemSpacing, paddingLeft/Right/Top/Bottom,
                       primaryAxisAlignItems, counterAxisAlignItems, clipsContent,
                       dropShadow {color{r,g,b,a}, offset{x,y}, radius}.
@@ -51,7 +57,8 @@ def register_tools(mcp, queue: JobQueue) -> None:
                      textAutoResize, w, h, lineHeight, letterSpacing.
         UPDATE_NODE fields: nodeId (required — accepts real Figma node IDs, including
                      those from the official MCP's get_metadata), plus any property to
-                     change (name, x, y, w, h, fills, opacity, text, fontSize, etc.)
+                     change (name, x, y, w, h, fills, opacity, text, fontSize,
+                     layoutSizingHorizontal, layoutSizingVertical, etc.)
         DELETE_NODE fields: nodeId (required) — removes the node from the canvas.
 
         Returns the job ID. Use get_job_status to wait for the result.
